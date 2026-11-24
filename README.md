@@ -5,7 +5,7 @@
 它保留 vLLM 的 Python 调度、输入前处理、采样和模型层循环，只把设备下发
 （ixformer kernel、分布式通信 pybind、CUDA runtime、cudagraph 回放）替换成
 C 级空实现。用来在不占卡、不出 kernel 的前提下度量并对比 host 侧耗时，
-例如 litehost 的 H/G 指标。
+例如按 scope 划分的 host 耗时（H）与 scope 间隙（G）指标。
 
 > 只用于 host 侧性能分析与 CPU-only 环境验证，**不产生正确的推理结果**。
 
@@ -55,7 +55,7 @@ C 级空实现。用来在不占卡、不出 kernel 的前提下度量并对比 
 git clone <this repo> /path/to/mock-vllm
 cd /path/to/mock-vllm
 
-# 可选：编译 litehost 量 H/G 用的符号垫片
+# 可选：编译 host 侧测量（H/G）用的符号垫片
 gcc -shared -fPIC -o mock_ix.so mock_ix.c
 
 # 用 PYTHONPATH 激活，不装包、不改 vllm 源码
@@ -89,8 +89,8 @@ CUDA_VISIBLE_DEVICES=-1 \
 | `MOCK_PREFILL` | `1` | `0` = 用假模型跳过真实层循环，只测框架路径 |
 | `MOCK_EAGER` | `0` | `1` = 关闭 cudagraph，全部 eager 执行 |
 | `MOCK_SAMPLE_CAST` | `1` | `0` = 不做采样器的 fp32 大张量转换（对照组） |
-| `MOCK_IX_LIB` | `<repo>/mock_ix.so` | litehost 符号垫片路径 |
-| `LIGHTHOST_LIB` / `LIGHTHOST_SESSION` | 由 litehost 设置 | 存在时同步/图下发走 `mock_ix.so`，H/G 测量才有效 |
+| `MOCK_IX_LIB` | `<repo>/mock_ix.so` | 符号垫片路径 |
+| `LIGHTHOST_LIB` / `LIGHTHOST_SESSION` | 由测量工具设置 | 存在时同步/图下发走 `mock_ix.so`，H/G 测量才有效 |
 
 ## 版本标识
 
@@ -101,7 +101,7 @@ CUDA_VISIBLE_DEVICES=-1 \
 
 ## 与 base 的对齐程度
 
-Qwen3-32B-W8A8，TP=4，输入/输出 128/128，`execute_model` 窗口内的 Python 帧名
+32B W8A8 模型，TP=4，输入/输出 128/128，`execute_model` 窗口内的 Python 帧名
 逐项比对（rank0，中段 step）：
 
 | | base 帧名/调用 | mock 帧名/调用 | 共同帧名 |
@@ -138,7 +138,7 @@ mock 独有帧只有 3 类：设备叶子替换点 `_noop`（与 base 设备叶�
 │   ├── counters.py      # 计数器
 │   └── comm.py          # 单 rank 通信桩
 ├── sitecustomize.py     # PYTHONPATH 自动激活入口
-├── mock_ix.c            # litehost 符号垫片源码（同步/图下发空实现）
+├── mock_ix.c            # 符号垫片源码（同步/图下发空实现）
 ├── mock_ixrt.c          # 可选：IXRT 空实现源码，mock_gpu 不引用
 └── cases9.txt           # 9 case 矩阵示例（input/output 长度组合）
 ```
@@ -152,7 +152,3 @@ mock 独有帧只有 3 类：设备叶子替换点 `_noop`（与 base 设备叶�
 | `[mock_gpu] sitecustomize skipped: ...` | venv 里已有 `sitecustomize` 冲突，改用 `.pth` 注入 |
 | torch 报 CUDA 错误 | 未设置 `CUDA_VISIBLE_DEVICES=-1` |
 | trace 里多出/缺少 Python 帧 | 两份结果的 mock id 不同，或 base 版本不一致 |
-
-## 许可
-
-未附带许可证文件。如需开源授权，请自行添加（例如 MIT / Apache-2.0）。

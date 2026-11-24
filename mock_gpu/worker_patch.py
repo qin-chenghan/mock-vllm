@@ -2,8 +2,11 @@ import contextlib
 import ctypes
 import functools
 import os
+from pathlib import Path
 
 import torch
+
+_IX_DEFAULT = str(Path(__file__).resolve().parent.parent / "mock_ix.so")
 
 
 def _c_noop_funcs():
@@ -149,7 +152,7 @@ def _make_sync():
     global _GRAPH_LAUNCH
     _GRAPH_LAUNCH = None
     lib = os.environ.get("LIGHTHOST_LIB")
-    ix = os.environ.get("MOCK_IX_LIB", "/home/qch/mock_vllm/mock_ix.so")
+    ix = os.environ.get("MOCK_IX_LIB", _IX_DEFAULT)
     if lib and os.environ.get("LIGHTHOST_SESSION") and os.path.exists(lib):
         try:
             ctypes.CDLL(ix, mode=ctypes.RTLD_GLOBAL)
@@ -167,7 +170,7 @@ def _make_sync():
                 _GRAPH_LAUNCH = functools.partial(ctypes.CFUNCTYPE(None)(gl))
             return functools.partial(fn)
         except Exception as exc:
-            print(f"[mock_gpu] litehost sync stub failed: {exc}", flush=True)
+            print(f"[mock_gpu] host sync stub failed: {exc}", flush=True)
     return _C_NOOP0
 
 
